@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Raíces — Guarda las recetas de tu familia con su propia voz</title>
+<meta name="description" content="Prototipo navegable de Raíces: la abuela cuenta, la IA ordena la receta, y queda en el muro de la familia para siempre." />
+<style>
+  /* ============ Design tokens ============
+     Palette — "cajón de especias", not the cream+terracotta default.
+       --ink   cocoa ink (text on paper)
+       --paper warm recipe-card paper
+       --clay  achiote red — the one bold accent (index tab, record button)
+       --saffron  gold highlight (connections, warmth)
+       --herb  muted cilantro green (success / "se parece a…")
+       --shell deep cocoa — app chrome & device body
+  */
+  :root{
+    --ink:#2b1d16;
+    --ink-soft:#6a5142;
+    --paper:#fcf7ee;
+    --paper-2:#f4ead6;
+    --clay:#c0442b;
+    --clay-deep:#9c3320;
+    --saffron:#e4a32c;
+    --herb:#5e7050;
+    --shell:#241715;
+    --shell-2:#2f1e19;
+    --line:#e6d8bf;
+    --radius:22px;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:var(--sans);
+    color:#f3e7d6;
+    background:
+      radial-gradient(120% 90% at 15% 0%, #3a241d 0%, transparent 55%),
+      radial-gradient(110% 100% at 100% 100%, #40261b 0%, transparent 50%),
+      var(--shell);
+    min-height:100dvh;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+
+  /* ============ Stage: pitch context + device ============ */
+  .stage{
+    max-width:1180px;margin:0 auto;
+    min-height:100dvh;
+    display:grid;grid-template-columns:1fr minmax(340px,390px);
+    gap:56px;align-items:center;
+    padding:48px 40px;
+  }
+  .pitch{max-width:460px}
+  .brandmark{display:flex;align-items:center;gap:11px;margin-bottom:34px}
+  .sprig{width:34px;height:34px;flex:none}
+  .brandmark b{font-family:var(--serif);font-size:23px;letter-spacing:.3px;font-weight:600;color:#fbf1df}
+  .kicker{
+    font-size:12px;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--saffron);font-weight:700;margin-bottom:18px
+  }
+  .pitch h1{
+    font-family:var(--serif);font-weight:600;
+    font-size:clamp(30px,4vw,46px);line-height:1.05;
+    margin:0 0 20px;color:#fdf4e6;letter-spacing:-.01em;
+  }
+  .pitch h1 em{font-style:italic;color:var(--saffron)}
+  .pitch .lede{font-size:17px;line-height:1.6;color:#d8c3ab;margin:0 0 30px}
+  .facts{display:flex;flex-direction:column;gap:2px;border-left:2px solid var(--clay);padding-left:18px}
+  .facts div{padding:7px 0}
+  .facts span{display:block;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:#a98d76;margin-bottom:3px}
+  .facts p{margin:0;font-size:14.5px;line-height:1.45;color:#eaddca}
+  .hint{margin-top:32px;font-size:13px;color:#9a7e68;display:flex;align-items:center;gap:8px}
+  .hint svg{flex:none}
+
+  /* ============ Device ============ */
+  .device-wrap{display:flex;justify-content:center}
+  .device{
+    position:relative;width:378px;height:772px;flex:none;
+    background:linear-gradient(160deg,#1b1010,#33211b);
+    border-radius:52px;padding:13px;
+    box-shadow:
+      0 2px 0 rgba(255,255,255,.06) inset,
+      0 40px 80px -30px rgba(0,0,0,.75),
+      0 0 0 2px #120b09;
+  }
+  .screen-frame{
+    position:relative;width:100%;height:100%;
+    border-radius:40px;overflow:hidden;background:var(--paper);
+    box-shadow:0 0 0 1px rgba(0,0,0,.35) inset;
+  }
+  .notch{
+    position:absolute;top:0;left:50%;transform:translateX(-50%);
+    width:128px;height:26px;background:#160d0b;border-radius:0 0 16px 16px;z-index:60;
+  }
+
+  /* ============ Screens ============ */
+  .screen{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    color:var(--ink);
+    opacity:0;visibility:hidden;transform:translateX(18px);
+    transition:opacity .45s ease, transform .45s ease, visibility .45s;
+  }
+  .screen.active{opacity:1;visibility:visible;transform:none}
+  .screen-body{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+  .screen-body::-webkit-scrollbar{display:none}
+
+  /* Top bar */
+  .topbar{
+    display:flex;align-items:center;gap:12px;
+    padding:40px 22px 10px;flex:none;
+  }
+  .back{
+    width:36px;height:36px;border-radius:50%;border:1px solid var(--line);
+    background:#fff;display:grid;place-items:center;cursor:pointer;color:var(--ink);
+    transition:background .2s;
+  }
+  .back:hover{background:var(--paper-2)}
+  .topbar .tt{font-family:var(--serif);font-size:17px;font-weight:600}
+  .topbar .grow{flex:1}
+  .dots{display:flex;gap:6px}
+  .dots i{width:6px;height:6px;border-radius:50%;background:var(--line);transition:all .3s}
+  .dots i.on{background:var(--clay);width:18px;border-radius:3px}
+
+  .btn{
+    appearance:none;border:0;cursor:pointer;font-family:var(--sans);
+    font-size:15px;font-weight:600;border-radius:15px;padding:15px 20px;
+    background:var(--clay);color:#fff;width:100%;
+    box-shadow:0 10px 22px -10px var(--clay);transition:transform .15s, background .2s;
+  }
+  .btn:hover{background:var(--clay-deep)}
+  .btn:active{transform:translateY(1px)}
+  .btn.ghost{background:transparent;color:var(--clay);box-shadow:none;border:1px solid var(--line)}
+  .btn.ghost:hover{background:var(--paper-2)}
+  .btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+  .foot{padding:14px 22px 26px;flex:none;background:linear-gradient(#fcf7ee00,var(--paper) 32%)}
+
+  /* ---- Screen 1: welcome ---- */
+  #s-welcome{background:
+     radial-gradient(120% 70% at 50% -10%, #fff6e3 0%, var(--paper) 55%)}
+  #s-welcome .hero{
+    flex:1;display:flex;flex-direction:column;justify-content:flex-end;
+    padding:64px 30px 0;text-align:left;
+  }
+  .wordmark{display:flex;align-items:center;gap:9px;margin-bottom:auto;padding-top:16px}
+  .wordmark b{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--ink)}
+  .card-peek{
+    align-self:center;width:190px;height:150px;margin:24px 0 30px;position:relative;
+    transform:rotate(-4deg);
+  }
+  .recipe-mini{
+    position:absolute;inset:0;background:var(--paper);border-radius:12px;
+    border:1px solid var(--line);
+    box-shadow:0 20px 40px -18px rgba(90,45,20,.55);
+    background-image:repeating-linear-gradient(var(--paper),var(--paper) 22px,#efe2c8 23px);
+    background-position:0 40px;padding:14px 16px;overflow:hidden;
+  }
+  .recipe-mini .tab{position:absolute;top:-1px;right:16px;width:34px;height:16px;background:var(--clay);border-radius:0 0 5px 5px}
+  .recipe-mini h5{font-family:var(--serif);margin:0 0 3px;font-size:14px;color:var(--ink)}
+  .recipe-mini small{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--clay);font-weight:700}
+  .recipe-mini .ln{height:6px;border-radius:3px;background:#eadbbf;margin-top:9px}
+  #s-welcome h2{
+    font-family:var(--serif);font-weight:600;font-size:29px;line-height:1.12;
+    margin:0 0 14px;color:var(--ink);letter-spacing:-.01em;
+  }
+  #s-welcome h2 em{font-style:italic;color:var(--clay)}
+  #s-welcome p.sub{font-size:15px;line-height:1.55;color:var(--ink-soft);margin:0}
+  .tag{display:inline-flex;align-items:center;gap:7px;margin-top:20px;font-size:12.5px;color:var(--herb);font-weight:600}
+  .tag::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--herb)}
+
+  /* ---- Screen 2: record ---- */
+  #s-record .rec-head{padding:6px 26px 0;text-align:center}
+  #s-record h2{font-family:var(--serif);font-size:24px;margin:2px 0 6px;color:var(--ink)}
+  #s-record .ask{font-size:14px;color:var(--ink-soft);margin:0}
+  .mic-stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:8px 26px}
+  .mic-btn{
+    position:relative;width:104px;height:104px;border-radius:50%;border:0;cursor:pointer;
+    background:var(--clay);color:#fff;display:grid;place-items:center;
+    box-shadow:0 16px 34px -12px var(--clay);transition:transform .2s,background .2s;
+  }
+  .mic-btn:active{transform:scale(.96)}
+  .mic-btn.live{background:var(--clay-deep)}
+  .mic-btn .ring{position:absolute;inset:0;border-radius:50%;border:2px solid var(--clay);opacity:0}
+  .mic-btn.live .ring{animation:pulse 1.8s ease-out infinite}
+  .mic-btn.live .ring.d{animation-delay:.9s}
+  @keyframes pulse{0%{opacity:.6;transform:scale(1)}100%{opacity:0;transform:scale(1.7)}}
+  .timer{font-variant-numeric:tabular-nums;font-size:15px;letter-spacing:.12em;color:var(--ink-soft);font-weight:600}
+  .wave{display:flex;align-items:center;gap:4px;height:44px}
+  .wave i{width:4px;height:8px;border-radius:2px;background:var(--saffron);opacity:.4;transition:opacity .3s}
+  .wave.live i{opacity:1;animation:bar 1s ease-in-out infinite}
+  .wave.live i:nth-child(2n){animation-duration:.7s}
+  .wave.live i:nth-child(3n){animation-duration:1.3s;background:var(--clay)}
+  @keyframes bar{0%,100%{height:8px}50%{height:38px}}
+  .prompt-hint{font-size:13px;color:var(--ink-soft);text-align:center;min-height:20px}
+  .transcript{
+    margin:0 26px;background:#fff;border:1px solid var(--line);border-radius:14px;
+    padding:14px 16px;font-family:var(--serif);font-style:italic;font-size:14.5px;
+    line-height:1.55;color:var(--ink);min-height:74px;
+    box-shadow:0 8px 20px -14px rgba(90,45,20,.4);
+  }
+  .transcript.empty{color:#bcae97;font-style:italic}
+  .cursor{display:inline-block;width:2px;height:1em;background:var(--clay);vertical-align:-2px;animation:blink 1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  /* ---- Screen 3: AI structure ---- */
+  #s-ai h2{font-family:var(--serif);font-size:22px;margin:0 0 4px;color:var(--ink)}
+  #s-ai .raw{
+    margin:2px 26px 0;background:var(--paper-2);border-radius:14px;padding:13px 15px;
+    font-family:var(--serif);font-style:italic;font-size:13.5px;line-height:1.5;color:var(--ink-soft);
+    position:relative;
+  }
+  #s-ai .raw span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--clay);font-weight:700;font-style:normal;display:block;margin-bottom:5px}
+  .ai-zone{padding:18px 26px 0;flex:1}
+  .thinking{display:flex;flex-direction:column;gap:12px;padding:14px 2px}
+  .think-row{display:flex;align-items:center;gap:12px;font-size:14px;color:#c3b199;transition:color .3s}
+  .think-row.done{color:var(--ink)}
+  .think-row .chk{
+    width:22px;height:22px;border-radius:50%;border:2px solid #ddcdb1;flex:none;display:grid;place-items:center;
+    transition:all .3s;
+  }
+  .think-row.done .chk{background:var(--herb);border-color:var(--herb);color:#fff}
+  .think-row .spin{width:16px;height:16px;border-radius:50%;border:2px solid #e2d3b8;border-top-color:var(--clay);animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .recipe-card{
+    background:#fff;border-radius:16px;border:1px solid var(--line);overflow:hidden;
+    box-shadow:0 18px 40px -20px rgba(90,45,20,.5);position:relative;
+    opacity:0;transform:translateY(14px);transition:opacity .5s,transform .5s;
+  }
+  .recipe-card.show{opacity:1;transform:none}
+  .recipe-card .rc-tab{position:absolute;top:0;right:22px;width:44px;height:20px;background:var(--clay);border-radius:0 0 6px 6px}
+  .recipe-card .rc-top{padding:20px 20px 14px;background:
+     radial-gradient(120% 100% at 100% 0%, #fff2d8, #fff)}
+  .recipe-card .rc-top small{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--clay);font-weight:700}
+  .recipe-card h3{font-family:var(--serif);font-size:22px;margin:6px 0 8px;color:var(--ink);line-height:1.1}
+  .rc-meta{display:flex;gap:16px;font-size:12px;color:var(--ink-soft)}
+  .rc-meta b{display:block;font-size:14px;color:var(--ink);font-weight:600}
+  .rc-body{padding:16px 20px 20px}
+  .rc-body h4{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--clay);margin:0 0 9px}
+  .ingredients{list-style:none;margin:0 0 18px;padding:0;columns:2;column-gap:16px}
+  .ingredients li{font-size:13px;color:var(--ink);padding:3px 0 3px 15px;position:relative;break-inside:avoid}
+  .ingredients li::before{content:"";position:absolute;left:0;top:9px;width:5px;height:5px;border-radius:50%;background:var(--saffron)}
+  .steps{list-style:none;margin:0;padding:0;counter-reset:st}
+  .steps li{font-size:13.5px;line-height:1.5;color:var(--ink);padding:0 0 12px 34px;position:relative;counter-increment:st}
+  .steps li::before{
+    content:counter(st);position:absolute;left:0;top:-1px;width:23px;height:23px;border-radius:50%;
+    background:var(--paper-2);color:var(--clay);font-family:var(--serif);font-weight:700;font-size:13px;
+    display:grid;place-items:center;
+  }
+
+  /* ---- Screen 4: wall ---- */
+  #s-wall{background:var(--paper)}
+  .wall-head{padding:6px 22px 4px}
+  .wall-head .fam{display:flex;align-items:center;gap:12px}
+  .avatars{display:flex}
+  .avatars span{
+    width:34px;height:34px;border-radius:50%;border:2px solid var(--paper);margin-left:-10px;
+    display:grid;place-items:center;font-size:15px;font-family:var(--serif);color:#fff;font-weight:600;
+  }
+  .avatars span:first-child{margin-left:0}
+  .wall-head h2{font-family:var(--serif);font-size:21px;margin:0;color:var(--ink)}
+  .wall-head p{margin:2px 0 0;font-size:12.5px;color:var(--ink-soft)}
+  .feed{padding:14px 22px 10px;display:flex;flex-direction:column;gap:14px}
+  .rcard{
+    display:flex;gap:13px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px;
+    cursor:pointer;text-align:left;width:100%;align-items:center;
+    box-shadow:0 10px 26px -20px rgba(90,45,20,.6);transition:transform .15s,box-shadow .2s;
+  }
+  .rcard:hover{transform:translateY(-2px);box-shadow:0 16px 30px -20px rgba(90,45,20,.7)}
+  .rcard .thumb{width:62px;height:62px;border-radius:12px;flex:none;display:grid;place-items:center;font-size:28px}
+  .rcard .info{flex:1;min-width:0}
+  .rcard .info h4{font-family:var(--serif);font-size:16px;margin:0 0 3px;color:var(--ink)}
+  .rcard .info .by{font-size:12px;color:var(--ink-soft);margin:0}
+  .rcard .conn{display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:11px;color:var(--herb);font-weight:600}
+  .rcard .conn::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--herb)}
+  .rcard.new{border-color:var(--saffron);box-shadow:0 0 0 1px var(--saffron),0 12px 26px -18px rgba(228,163,44,.7)}
+  .pill-new{position:absolute;transform:translate(0,-6px);font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+    background:var(--saffron);color:#4a2e10;font-weight:800;padding:2px 7px;border-radius:20px}
+  .toast{
+    position:absolute;left:50%;top:44px;transform:translate(-50%,-14px);z-index:70;
+    background:var(--ink);color:#fdf4e6;font-size:13px;font-weight:600;padding:10px 16px;border-radius:30px;
+    display:flex;align-items:center;gap:8px;opacity:0;transition:all .4s;box-shadow:0 14px 30px -12px rgba(0,0,0,.6);
+    white-space:nowrap;
+  }
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+
+  /* ---- Recipe detail overlay ---- */
+  .detail{
+    position:absolute;inset:0;z-index:80;background:var(--paper);
+    transform:translateY(100%);transition:transform .4s cubic-bezier(.3,.8,.3,1);
+    display:flex;flex-direction:column;
+  }
+  .detail.open{transform:none}
+  .detail-hero{padding:56px 24px 22px;color:#fff;position:relative}
+  .detail-hero .dclose{
+    position:absolute;top:44px;left:20px;width:36px;height:36px;border-radius:50%;
+    background:rgba(255,255,255,.22);border:0;color:#fff;cursor:pointer;display:grid;place-items:center;backdrop-filter:blur(4px);
+  }
+  .detail-hero small{font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.85;font-weight:700}
+  .detail-hero h3{font-family:var(--serif);font-size:26px;margin:8px 0 14px;line-height:1.08}
+  .voice-play{display:inline-flex;align-items:center;gap:10px;background:rgba(0,0,0,.28);border:0;color:#fff;
+    padding:9px 15px 9px 11px;border-radius:30px;cursor:pointer;font-size:13px;font-weight:600}
+  .voice-play .pl{width:26px;height:26px;border-radius:50%;background:#fff;color:var(--ink);display:grid;place-items:center}
+  .voice-bars{display:inline-flex;gap:3px;align-items:center;height:16px}
+  .voice-bars i{width:3px;background:#fff;border-radius:2px;opacity:.85}
+  .detail-body{flex:1;overflow-y:auto;background:var(--paper);border-radius:22px 22px 0 0;margin-top:-16px;padding:22px 24px 30px}
+  .detail-body::-webkit-scrollbar{display:none}
+
+  /* Fallback context for small screens */
+  .mobile-context{display:none}
+
+  @media (max-width:900px){
+    .stage{grid-template-columns:1fr;gap:30px;padding:34px 20px}
+    .pitch{max-width:620px;margin:0 auto;text-align:center}
+    .facts{display:inline-flex;text-align:left;margin-top:6px}
+    .brandmark,.hint{justify-content:center}
+  }
+  @media (max-width:430px){
+    .stage{padding:20px 0 40px}
+    .device{width:min(100vw - 20px,378px);height:auto;aspect-ratio:378/772;border-radius:44px}
+    .pitch{padding:0 22px}
+    .pitch h1{font-size:26px}
+    .facts{border-left:0;padding-left:0;border-top:1px solid var(--clay);padding-top:10px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.001ms!important;transition-duration:.08s!important}
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <!-- ============ Pitch context (also the "contexto claro" the brief asks for) ============ -->
+  <div class="pitch">
+    <div class="brandmark">
+      <svg class="sprig" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <path d="M16 30V10" stroke="#e4a32c" stroke-width="2.4" stroke-linecap="round"/>
+        <path d="M16 15C16 15 9 14 7 8C13 7 16 12 16 15Z" fill="#5e7050"/>
+        <path d="M16 12C16 12 23 10 25 4C19 4 16 9 16 12Z" fill="#c0442b"/>
+      </svg>
+      <b>Raíces</b>
+    </div>
+    <div class="kicker">Prototipo · The Vibecoders League</div>
+    <h1>Las recetas de la abuela no están escritas <em>en ningún lado.</em></h1>
+    <p class="lede">Están en su memoria y en su voz. <b>Raíces</b> las captura mientras cocina, la IA las ordena en una receta de verdad, y quedan guardadas en el muro de la familia — para siempre.</p>
+    <div class="facts">
+      <div>
+        <span>El problema</span>
+        <p>Cuando la abuela ya no está, sus recetas se van con ella. Nadie las escribió a tiempo.</p>
+      </div>
+      <div>
+        <span>Para quién</span>
+        <p>Familias que cocinan de memoria y quieren heredar sus sabores, no perderlos.</p>
+      </div>
+      <div>
+        <span>A quién se lo presento</span>
+        <p>A un equipo de producto que invierte en apps de comunidad y memoria familiar.</p>
+      </div>
+    </div>
+    <p class="hint">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#e4a32c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Recorré el prototipo → grabá, dejá que la IA la ordene y guardala en el muro.
+    </p>
+  </div>
+
+  <!-- ============ Device ============ -->
+  <div class="device-wrap">
+    <div class="device">
+      <div class="screen-frame">
+        <div class="notch"></div>
+        <div id="toast" class="toast">🌿 Guardada en el muro de los García</div>
+
+        <!-- ===== Screen 1: Welcome ===== -->
+        <section class="screen active" id="s-welcome">
+          <div class="hero">
+            <div class="wordmark">
+              <svg class="sprig" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+                <path d="M16 30V10" stroke="#e4a32c" stroke-width="2.4" stroke-linecap="round"/>
+                <path d="M16 15C16 15 9 14 7 8C13 7 16 12 16 15Z" fill="#5e7050"/>
+                <path d="M16 12C16 12 23 10 25 4C19 4 16 9 16 12Z" fill="#c0442b"/>
+              </svg>
+              <b>Raíces</b>
+            </div>
+            <div class="card-peek">
+              <div class="recipe-mini">
+                <div class="tab"></div>
+                <small>Receta de familia</small>
+                <h5>Sancocho de la abuela Rosa</h5>
+                <div class="ln" style="width:88%"></div>
+                <div class="ln" style="width:70%"></div>
+                <div class="ln" style="width:80%"></div>
+              </div>
+            </div>
+            <h2>Que ninguna receta se pierda con <em>quien la cocina.</em></h2>
+            <p class="sub">La abuela cuenta cómo lo hace. Raíces la escucha, la ordena y la guarda para toda la familia.</p>
+            <span class="tag">Sin backend · una idea que se puede tocar</span>
+          </div>
+          <div class="foot">
+            <button class="btn" onclick="go('s-record')">Empezar a guardar recetas</button>
+          </div>
+        </section>
+
+        <!-- ===== Screen 2: Record ===== -->
+        <section class="screen" id="s-record">
+          <div class="topbar">
+            <button class="back" onclick="go('s-welcome')" aria-label="Volver">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="grow"></div>
+            <div class="dots"><i class="on"></i><i></i><i></i></div>
+          </div>
+          <div class="screen-body">
+            <div class="rec-head">
+              <h2>Contame, abuela</h2>
+              <p class="ask">Dejá que hable mientras cocina. Nosotros la escuchamos.</p>
+            </div>
+            <div class="mic-stage">
+              <button class="mic-btn" id="micBtn" onclick="toggleRec()" aria-label="Grabar">
+                <span class="ring"></span><span class="ring d"></span>
+                <svg id="micIcon" width="34" height="34" viewBox="0 0 24 24" fill="none">
+                  <rect x="9" y="3" width="6" height="12" rx="3" fill="#fff"/>
+                  <path d="M6 11a6 6 0 0012 0M12 17v4" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <div class="timer" id="timer">00:00</div>
+              <div class="wave" id="wave">
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
+              <div class="prompt-hint" id="recHint">Tocá el micrófono para empezar a grabar</div>
+            </div>
+            <div class="transcript empty" id="transcript">La transcripción de su voz aparecerá aquí, palabra por palabra…</div>
+          </div>
+          <div class="foot">
+            <button class="btn" id="recNext" onclick="go('s-ai')" disabled>Ordenar la receta con IA</button>
+          </div>
+        </section>
+
+        <!-- ===== Screen 3: AI structuring ===== -->
+        <section class="screen" id="s-ai">
+          <div class="topbar">
+            <button class="back" onclick="go('s-record')" aria-label="Volver">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="tt">De la voz a la receta</div>
+            <div class="grow"></div>
+            <div class="dots"><i></i><i class="on"></i><i></i></div>
+          </div>
+          <div class="screen-body">
+            <div class="raw">
+              <span>Lo que dijo la abuela</span>
+              “…mirá mija, el sancocho pues primero pones la gallina con agua bien tapadita, después le echas la yuca y el plátano cuando ya esté blandita, un poquito de cilantro al final que no se te olvide, y comé caliente que si no no sabe igual…”
+            </div>
+            <div class="ai-zone">
+              <div class="thinking" id="thinking">
+                <div class="think-row" data-row="0"><span class="chk"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 6" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Detectando el plato y las porciones</div>
+                <div class="think-row" data-row="1"><span class="chk"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 6" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Separando los ingredientes</div>
+                <div class="think-row" data-row="2"><span class="chk"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 6" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Ordenando los pasos y el tiempo</div>
+              </div>
+
+              <div class="recipe-card" id="recipeCard">
+                <div class="rc-tab"></div>
+                <div class="rc-top">
+                  <small>Receta de familia</small>
+                  <h3>Sancocho de gallina de la abuela Rosa</h3>
+                  <div class="rc-meta">
+                    <div><b>6</b> porciones</div>
+                    <div><b>1 h 40</b> aprox.</div>
+                    <div><b>Fácil</b> a fuego lento</div>
+                  </div>
+                </div>
+                <div class="rc-body">
+                  <h4>Ingredientes</h4>
+                  <ul class="ingredients">
+                    <li>1 gallina en presas</li>
+                    <li>2 L de agua</li>
+                    <li>Yuca</li>
+                    <li>Plátano verde</li>
+                    <li>Mazorca</li>
+                    <li>Cilantro</li>
+                    <li>Cebolla y ajo</li>
+                    <li>Sal al gusto</li>
+                  </ul>
+                  <h4>Pasos</h4>
+                  <ol class="steps">
+                    <li>Poné la gallina con el agua bien tapada y dejá hervir a fuego medio.</li>
+                    <li>Cuando ablande, agregá la yuca, el plátano y la mazorca.</li>
+                    <li>Cociná hasta que todo esté blandito.</li>
+                    <li>Echá el cilantro al final para que no se pase.</li>
+                    <li>Serví bien caliente — “que si no, no sabe igual”.</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="foot">
+            <button class="btn" id="saveBtn" onclick="saveRecipe()" disabled>Guardar en el muro</button>
+          </div>
+        </section>
+
+        <!-- ===== Screen 4: Family wall ===== -->
+        <section class="screen" id="s-wall">
+          <div class="topbar">
+            <button class="back" onclick="go('s-ai')" aria-label="Volver">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="grow"></div>
+            <div class="dots"><i></i><i></i><i class="on"></i></div>
+          </div>
+          <div class="screen-body">
+            <div class="wall-head">
+              <div class="fam">
+                <div class="avatars">
+                  <span style="background:#c0442b">R</span>
+                  <span style="background:#5e7050">M</span>
+                  <span style="background:#e4a32c">J</span>
+                  <span style="background:#8a5a3c">+</span>
+                </div>
+                <div>
+                  <h2>El muro de los García</h2>
+                  <p>13 recetas · 5 personas cocinando la memoria</p>
+                </div>
+              </div>
+            </div>
+            <div class="feed">
+              <span class="pill-new">Recién guardada</span>
+              <button class="rcard new" onclick="openDetail()">
+                <div class="thumb" style="background:radial-gradient(#ffe6b3,#f2c777)">🍲</div>
+                <div class="info">
+                  <h4>Sancocho de gallina de la abuela Rosa</h4>
+                  <p class="by">por la abuela Rosa · grabada por vos hoy</p>
+                  <span class="conn">se parece a tu “Ajiaco de la tía Marta”</span>
+                </div>
+              </button>
+              <div class="rcard">
+                <div class="thumb" style="background:radial-gradient(#ffd9cf,#e79a86)">🫓</div>
+                <div class="info">
+                  <h4>Arepas de la abuela Rosa</h4>
+                  <p class="by">por la abuela Rosa · grabada por Mamá</p>
+                  <span class="conn">base de 3 recetas más</span>
+                </div>
+              </div>
+              <div class="rcard">
+                <div class="thumb" style="background:radial-gradient(#d8e6c2,#a7c17e)">🥘</div>
+                <div class="info">
+                  <h4>Ajiaco de la tía Marta</h4>
+                  <p class="by">por la tía Marta · grabada por Juan</p>
+                  <span class="conn">mismo secreto: cilantro al final</span>
+                </div>
+              </div>
+              <div class="rcard">
+                <div class="thumb" style="background:radial-gradient(#f3d1e0,#d68fb0)">🍮</div>
+                <div class="info">
+                  <h4>Natilla de diciembre</h4>
+                  <p class="by">por la abuela Rosa · grabada por Mamá</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="foot">
+            <button class="btn ghost" onclick="invite()">Invitar a la familia a grabar</button>
+          </div>
+        </section>
+
+        <!-- ===== Recipe detail overlay ===== -->
+        <div class="detail" id="detail">
+          <div class="detail-hero" style="background:linear-gradient(160deg,#c0442b,#e4a32c)">
+            <button class="dclose" onclick="closeDetail()" aria-label="Cerrar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+            <small>Receta de familia · grabada hoy</small>
+            <h3>Sancocho de gallina de la abuela Rosa</h3>
+            <button class="voice-play" onclick="playVoice(this)">
+              <span class="pl"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M7 5l12 7-12 7V5z" fill="currentColor"/></svg></span>
+              Escuchar la voz original
+              <span class="voice-bars"><i style="height:6px"></i><i style="height:13px"></i><i style="height:9px"></i><i style="height:16px"></i><i style="height:7px"></i></span>
+            </button>
+          </div>
+          <div class="detail-body">
+            <div class="rc-meta" style="margin-bottom:16px">
+              <div><b>6</b> porciones</div>
+              <div><b>1 h 40</b></div>
+              <div><b>Fácil</b></div>
+            </div>
+            <h4 style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--clay);margin:0 0 9px">Ingredientes</h4>
+            <ul class="ingredients">
+              <li>1 gallina en presas</li><li>2 L de agua</li><li>Yuca</li><li>Plátano verde</li>
+              <li>Mazorca</li><li>Cilantro</li><li>Cebolla y ajo</li><li>Sal al gusto</li>
+            </ul>
+            <h4 style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--clay);margin:0 0 9px">Pasos</h4>
+            <ol class="steps">
+              <li>Poné la gallina con el agua bien tapada y dejá hervir a fuego medio.</li>
+              <li>Cuando ablande, agregá la yuca, el plátano y la mazorca.</li>
+              <li>Cociná hasta que todo esté blandito.</li>
+              <li>Echá el cilantro al final para que no se pase.</li>
+              <li>Serví bien caliente — “que si no, no sabe igual”.</li>
+            </ol>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  /* ---------- Screen navigation ---------- */
+  function go(id){
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.querySelector('.screen-frame').scrollTop = 0;
+    if(id==='s-ai') runAI();
+  }
+
+  /* ---------- Screen 2: recording ---------- */
+  let recording=false, recTimer=null, secs=0, typing=null;
+  const speech="Mirá mija, el sancocho pues primero pones la gallina con agua bien tapadita, después le echas la yuca y el plátano cuando ya esté blandita, un poquito de cilantro al final…";
+  function fmt(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
+
+  function toggleRec(){
+    recording=!recording;
+    const btn=document.getElementById('micBtn');
+    const wave=document.getElementById('wave');
+    const icon=document.getElementById('micIcon');
+    const hint=document.getElementById('recHint');
+    const tr=document.getElementById('transcript');
+
+    if(recording){
+      btn.classList.add('live'); wave.classList.add('live');
+      hint.textContent='Grabando… tocá de nuevo para terminar';
+      icon.innerHTML='<rect x="7" y="7" width="10" height="10" rx="2" fill="#fff"/>';
+      secs=0; document.getElementById('timer').textContent='00:00';
+      recTimer=setInterval(()=>{secs++;document.getElementById('timer').textContent=fmt(secs)},1000);
+      // type transcript live
+      tr.classList.remove('empty'); tr.innerHTML='<span class="cursor"></span>';
+      let i=0;
+      clearInterval(typing);
+      typing=setInterval(()=>{
+        i+=2;
+        tr.innerHTML=speech.slice(0,i)+'<span class="cursor"></span>';
+        if(i>=speech.length){clearInterval(typing);}
+      },45);
+    }else{
+      btn.classList.remove('live'); wave.classList.remove('live');
+      clearInterval(recTimer); clearInterval(typing);
+      icon.innerHTML='<rect x="9" y="3" width="6" height="12" rx="3" fill="#fff"/><path d="M6 11a6 6 0 0012 0M12 17v4" stroke="#fff" stroke-width="2" stroke-linecap="round"/>';
+      tr.innerHTML=speech;
+      hint.textContent = secs>0 ? '¡Listo! Ya la escuchamos. Ordená la receta →' : 'Tocá el micrófono para empezar a grabar';
+      if(secs>0){ document.getElementById('recNext').disabled=false; }
+    }
+  }
+
+  /* ---------- Screen 3: AI reveal ---------- */
+  let aiRan=false;
+  function runAI(){
+    if(aiRan) return; aiRan=true;
+    const rows=document.querySelectorAll('.think-row');
+    // show spinners
+    rows.forEach(r=>r.querySelector('.chk').innerHTML='<span class="spin"></span>');
+    let n=0;
+    const step=()=>{
+      if(n<rows.length){
+        rows[n].classList.add('done');
+        rows[n].querySelector('.chk').innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 6" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        n++; setTimeout(step,650);
+      }else{
+        document.getElementById('recipeCard').classList.add('show');
+        document.getElementById('saveBtn').disabled=false;
+      }
+    };
+    setTimeout(step,500);
+  }
+
+  /* ---------- Screen 4: save + toast ---------- */
+  function saveRecipe(){
+    go('s-wall');
+    const t=document.getElementById('toast');
+    setTimeout(()=>{t.classList.add('show');
+      setTimeout(()=>t.classList.remove('show'),2600);
+    },350);
+  }
+  function invite(){
+    const t=document.getElementById('toast');
+    t.textContent='💌 Enviamos el link a Mamá, Juan y la tía Marta';
+    t.classList.add('show');
+    setTimeout(()=>{t.classList.remove('show');
+      setTimeout(()=>t.textContent='🌿 Guardada en el muro de los García',400);
+    },2600);
+  }
+
+  /* ---------- Detail overlay ---------- */
+  function openDetail(){document.getElementById('detail').classList.add('open')}
+  function closeDetail(){document.getElementById('detail').classList.remove('open')}
+  function playVoice(btn){
+    const bars=btn.querySelectorAll('.voice-bars i');
+    let ticks=0;
+    const iv=setInterval(()=>{
+      bars.forEach(b=>b.style.height=(4+Math.round((Math.sin((ticks+Math.random()*3))+1)*8))+'px');
+      if(++ticks>28){clearInterval(iv);bars.forEach((b,k)=>b.style.height=[6,13,9,16,7][k]+'px')}
+    },90);
+  }
+</script>
+</body>
+</html>
